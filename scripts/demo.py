@@ -206,7 +206,7 @@ def main():
     rule("SEARCH — closed vocabulary (exact, indexed)")
     tag_search(["kitchen"], "all")
     tag_search(["kitchen", "dishwashing"], "all")
-    tag_search(["bed_making", "plastering"], "all")
+    tag_search(["kitchen", "plastering"], "all")
     tag_search(["bedroom", "construction_site"], "any")
 
     rollup_demo()
