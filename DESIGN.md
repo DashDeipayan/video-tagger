@@ -309,40 +309,48 @@ buy accuracy on four videos — it bought roll-up search, abstention at the righ
 depth, and a vocabulary that can grow structure. Those are the things that matter
 at 5,000 nodes, and four videos cannot demonstrate them numerically.
 
-### The precision cost of a wide beam
+### Mutually-exclusive facets — a bug the demo surfaced
 
-A measured regression, kept rather than tuned away. On 4.mp4 the environment
-facet reads:
+The wide beam initially cost real precision. On 4.mp4 the environment facet read:
 
 ```
-indoor                    0.92  ○
-outdoor                   0.89  ○
-outdoor.construction_site 0.88  ●   ← correct
-indoor.bedroom            0.73  ●
-indoor.kitchen            0.68  ●   ← false positive
+indoor                    0.92      ← vague parent wins the root
+outdoor                   0.89
+outdoor.construction_site 0.88      ← the correct answer
+indoor.bedroom            0.73
+indoor.kitchen            0.68      ← false positive
 ```
 
-`indoor` narrowly beats `outdoor` at the root — not unreasonable, since the
-footage is a roofed, scaffolded site — and softmax over `indoor`'s four children
-must crown one even though none is right, so `kitchen` surfaces at 0.68. The
-consequence is visible in search: `?tags=kitchen,plastering&mode=all` now returns
-4.mp4, where the flat version correctly returned nothing.
+Searching `kitchen` returned the construction site and the factory floor. The
+root cause is structural, not a tuning problem: **a softmax must sum to 1.** Both
+`indoor` and `outdoor` survive the beam, and the softmax over `indoor`'s four
+children then has to crown one even though none of them fits — so `kitchen` wins
+by default among {bathroom, bedroom, kitchen, restaurant}.
 
-The beam is what causes this *and* what saves it: `construction_site` 0.88 only
-survives because beam=3 explored `outdoor` as well as `indoor`. Narrowing the beam
-would remove the false positive and lose the correct answer with it.
+The fix is to mark a facet **mutually exclusive** (`taxonomy.ExclusiveKinds`): a
+clip is in one kind of place, so asserting both `indoor.kitchen` and
+`outdoor.construction_site` for the same video is incoherent. At selection time
+only the winning top-level branch survives.
 
-The principled fix is **mutually-exclusive sibling groups** — a video is in one
-place, so emitting leaves from two exclusive environment roots is incoherent and
-should be forbidden at selection time. That is a small addition to the `Term`
-model and the right next change. Tightening thresholds against four videos would
-be overfitting, so the thresholds are left where they are.
+The subtlety is how the winner is chosen. Ranking branches by the **root's own
+score** makes things worse — `indoor` 0.92 beats `outdoor` 0.89, so
+`construction_site` would be discarded. Branches must be ranked by their best
+**descendant**: indoor's best child is 0.73, outdoor's is 0.88, so outdoor wins.
+A vague parent should not out-rank a confident leaf just because its label is
+broader. (`keepBestBranch`, `internal/tagging/tagger.go`.)
+
+Result: environment accuracy stays 4/4 while the false positives disappear.
+`?tags=kitchen` returns one video instead of three, and
+`?tags=kitchen,plastering&mode=all` is correctly empty again.
+
+Activities and objects are deliberately **not** exclusive — a video can genuinely
+involve cleaning and food work at once, and contain many objects.
 
 ### Known weaknesses (worth raising before someone else does)
 
 - **Max-over-frames aggregation inflates spurious tags.** One odd frame is enough to assert a tag: 4.mp4 picks up `bedroom` 0.73 from a single frame of draped cloth. Requiring agreement across ≥2 frames, or a trimmed mean, would fix this at the cost of recall on genuinely brief activities.
 - **Visually similar environments confuse.** 2.mp4's stainless-steel sorting trays read partly as `kitchen`/`dishwashing`. Defensible given the imagery, but single-frame environment classification has limits.
-- **Softmax must crown a winner.** When the true answer is absent from a sibling group, the mass still has to go somewhere. Mutually-exclusive groups and an explicit "none of these" option would both help.
+- **Softmax must crown a winner.** When the true answer is absent from a sibling group, the mass still has to go somewhere. Exclusive facets fix this where branches are genuinely alternatives (above); for non-exclusive facets an explicit "none of these" calibration term is the remaining gap.
 - **Activities are temporal and we score single frames.** No amount of prompt tuning separates "washing" from "rinsing" without motion. A video-native model (VideoMAE, X-CLIP) over short clips is the upgrade path.
 - **Audio is unused.** All four files carry AAC, and it is genuinely informative — running water in 3.mp4, troweling in 4.mp4. Whisper/CLAP on the audio track is a cheap second modality.
 

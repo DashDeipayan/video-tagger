@@ -239,6 +239,25 @@ func (t *ZeroShotTagger) selectTags(g *taxonomy.Graph, best map[string]float64) 
 
 	var tags []model.Tag
 	for kind, cands := range byFacet { //nolint:gocritic // grouped per facet on purpose
+		// For an exclusive facet, keep only the winning top-level branch.
+		//
+		// The winner is chosen by its best DESCENDANT, not by the root's own
+		// score, and that distinction decides the outcome. On construction
+		// footage `indoor` (0.92) narrowly outscores `outdoor` (0.89) at the
+		// root, so picking by root would keep the indoor branch and discard
+		// `construction_site` (0.88) — the correct answer. Comparing best
+		// descendants picks `outdoor` instead, because 0.88 beats anything
+		// under indoor.
+		if taxonomy.ExclusiveKinds[kind] {
+			cands = keepBestBranch(g, cands)
+			facetBest[kind] = 0
+			for _, c := range cands {
+				if c.Confidence > facetBest[kind] {
+					facetBest[kind] = c.Confidence
+				}
+			}
+		}
+
 		floor := facetBest[kind] * relativeFloor
 		kept := cands[:0]
 		for _, c := range cands {
@@ -420,3 +439,73 @@ func normalise(v []float32) {
 }
 
 func round3(f float64) float64 { return math.Round(f*1000) / 1000 }
+
+// keepBestBranch resolves a mutually-exclusive facet down to one branch.
+//
+// Candidates are grouped by the facet root they descend from; the group
+// containing the single highest-scoring term wins and the rest are dropped.
+// Using the best term anywhere in the branch — rather than the root's own score
+// — is what makes this correct, because a root can win the softmax on vague
+// evidence while a sibling branch holds the one confident leaf.
+func keepBestBranch(g *taxonomy.Graph, cands []model.Tag) []model.Tag {
+	if len(cands) < 2 {
+		return cands
+	}
+
+	// Rank branches by their best DESCENDANT, excluding the roots' own scores.
+	//
+	// Including a root would defeat the purpose: a vague parent like `indoor` can
+	// score 0.92 on "it's under a roof" while the branch holds nothing specific,
+	// and would then beat `outdoor` 0.89 whose child `construction_site` is the
+	// confident 0.88 answer. Branches earn their place on evidence, not on how
+	// broad their label is.
+	rootsOf := make(map[string][]string, len(cands))
+	for _, c := range cands {
+		rootsOf[c.Name] = g.RootsOf(c.Name)
+	}
+
+	bestByRoot := map[string]float64{}
+	for _, c := range cands {
+		if c.Depth == 0 {
+			continue
+		}
+		for _, r := range rootsOf[c.Name] {
+			if c.Confidence > bestByRoot[r] {
+				bestByRoot[r] = c.Confidence
+			}
+		}
+	}
+	// No branch produced a specific match — fall back to the roots themselves so
+	// a coarse answer still beats no answer.
+	if len(bestByRoot) == 0 {
+		for _, c := range cands {
+			for _, r := range rootsOf[c.Name] {
+				if c.Confidence > bestByRoot[r] {
+					bestByRoot[r] = c.Confidence
+				}
+			}
+		}
+	}
+	if len(bestByRoot) < 2 {
+		return cands
+	}
+
+	winner, best := "", -1.0
+	for r, s := range bestByRoot {
+		// Ties broken by name so the result is deterministic across runs.
+		if s > best || (s == best && r < winner) {
+			winner, best = r, s
+		}
+	}
+
+	out := cands[:0]
+	for _, c := range cands {
+		for _, r := range rootsOf[c.Name] {
+			if r == winner {
+				out = append(out, c)
+				break
+			}
+		}
+	}
+	return out
+}

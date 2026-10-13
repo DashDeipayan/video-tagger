@@ -251,3 +251,27 @@ func (g *Graph) Subtree(name string) []string {
 	}
 	return out
 }
+
+// RootsOf returns the facet roots a term descends from (itself, if it is a root).
+//
+// A term can reach several roots in a DAG, which is why this returns a set
+// rather than a single value.
+func (g *Graph) RootsOf(name string) []string {
+	t, ok := g.Get(name)
+	if !ok {
+		return nil
+	}
+	if len(t.Parents) == 0 {
+		return []string{name}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, a := range g.Ancestors(name) {
+		at, ok := g.Get(a)
+		if ok && len(at.Parents) == 0 && !seen[a] {
+			seen[a] = true
+			out = append(out, a)
+		}
+	}
+	return out
+}

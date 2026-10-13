@@ -167,6 +167,20 @@ var Seed = []Term{
 // whatever granularity the evidence actually supports.
 const MinPathConfidence = 0.15
 
+// ExclusiveKinds marks facets whose top-level branches are mutually exclusive.
+//
+// A clip is in ONE kind of place, so asserting both `indoor.kitchen` and
+// `outdoor.construction_site` for the same video is incoherent — and it is
+// exactly what a softmax produces, because the mass must sum to 1 whether or
+// not the right answer is among the siblings. When `indoor` narrowly wins the
+// root and none of its children fit, one of them still gets crowned.
+//
+// Activities and objects are genuinely multiple (a video can involve cleaning
+// AND food work, and contain many objects), so they are not exclusive.
+var ExclusiveKinds = map[Kind]bool{
+	KindEnvironment: true,
+}
+
 // BeamAt is how many siblings to descend into at a given depth.
 //
 // Greedy descent (beam 1) lets one wrong top-level choice poison everything
