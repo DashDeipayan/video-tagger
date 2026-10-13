@@ -425,7 +425,12 @@ async function runSemantic(){
   lastResults = d.results;
   render(d.results.map(r=>({...r.video, _score:r.score, _ts:r.match_ts})));
   $('title').textContent = `“${q}”`;
-  $('submeta').textContent = `${d.count} ranked by similarity — open vocabulary, matched on frame vectors`;
+  $('submeta').textContent = d.count
+    ? `${d.count} above the relevance floor (${d.min_score}) — open vocabulary, matched on frame vectors`
+    : `nothing scored above the relevance floor (${d.min_score})`;
+  // An empty semantic result is a real answer, not a failure: the scores are
+  // saying no frame in the corpus resembles the phrase.
+  $('empty').textContent = `Nothing in the corpus resembles “${q}”.`;
 }
 function trySem(q){ setMode('sem'); $('q').value = q; runSemantic(); }
 

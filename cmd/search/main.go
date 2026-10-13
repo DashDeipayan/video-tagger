@@ -32,6 +32,11 @@ import (
 	"github.com/instawork/video-tagging/internal/taxonomy"
 )
 
+// defaultMinScore is the relevance floor applied to semantic queries. See the
+// note at its use site for why it is a presentation choice rather than a
+// calibrated threshold.
+const defaultMinScore = 0.26
+
 type server struct {
 	st   store.Store
 	emb  tagging.Embedder
@@ -140,12 +145,30 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusServiceUnavailable, "embedding service unavailable")
 			return
 		}
-		hits, err := s.st.SearchByVector(r.Context(), vecs[0], limit)
+		// Relevance floor for semantic hits.
+		//
+		// Measured on this corpus: correct matches bottom out at 0.260 while
+		// nonsense queries top out at 0.253, so 0.26 removes the irrelevant tail
+		// and makes a no-match query return nothing at all.
+		//
+		// Worth being precise about what this does NOT do. CLIP similarity is a
+		// ranking signal, not a calibrated relevance score — a wrong answer can
+		// score 0.337 while a right one scores 0.260, so the floor cannot
+		// improve precision, only cut the obvious noise. The gap it relies on is
+		// 0.007 wide, which is a presentation choice tuned on a small corpus,
+		// not a principled cutoff. Pass min_score=0 to disable.
+		minScore := defaultMinScore
+		if v, err := strconv.ParseFloat(q.Get("min_score"), 64); err == nil {
+			minScore = v
+		}
+		hits, err := s.st.SearchByVector(r.Context(), vecs[0], limit, minScore)
 		if err != nil {
 			httpx.Error(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		httpx.JSON(w, http.StatusOK, response("semantic", text, hits))
+		resp := response("semantic", text, hits)
+		resp["min_score"] = minScore
+		httpx.JSON(w, http.StatusOK, resp)
 		return
 	}
 

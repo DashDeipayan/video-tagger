@@ -297,7 +297,7 @@ func (s *SQLite) SearchByTags(ctx context.Context, q Query) ([]*model.ScoredVide
 // The brute-force scan is honest for a prototype and wrong at scale: production
 // replaces it with an ANN index (HNSW/IVF) in a vector database, turning this
 // O(n) pass into roughly O(log n).
-func (s *SQLite) SearchByVector(ctx context.Context, vec []float32, limit int) ([]*model.ScoredVideo, error) {
+func (s *SQLite) SearchByVector(ctx context.Context, vec []float32, limit int, minScore float64) ([]*model.ScoredVideo, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT video_id, ts_sec, vec FROM embeddings`)
 	if err != nil {
 		return nil, err
@@ -329,6 +329,9 @@ func (s *SQLite) SearchByVector(ctx context.Context, vec []float32, limit int) (
 	}
 	ranked := make([]kv, 0, len(bests))
 	for id, b := range bests {
+		if b.score < minScore {
+			continue
+		}
 		ranked = append(ranked, kv{id, b})
 	}
 	sort.Slice(ranked, func(i, j int) bool { return ranked[i].b.score > ranked[j].b.score })

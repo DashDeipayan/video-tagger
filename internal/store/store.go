@@ -58,7 +58,9 @@ type Store interface {
 	GetVideo(ctx context.Context, id string) (*model.Video, error)
 	ListVideos(ctx context.Context, limit int) ([]*model.Video, error)
 	SearchByTags(ctx context.Context, q Query) ([]*model.ScoredVideo, error)
-	SearchByVector(ctx context.Context, vec []float32, limit int) ([]*model.ScoredVideo, error)
+	// SearchByVector ranks videos by similarity to vec. minScore drops hits
+	// below a relevance floor; 0 disables it and returns everything ranked.
+	SearchByVector(ctx context.Context, vec []float32, limit int, minScore float64) ([]*model.ScoredVideo, error)
 	TagCloud(ctx context.Context) ([]TagCount, error)
 	Stats(ctx context.Context) (Stats, error)
 

@@ -136,7 +136,12 @@ Results carry `match_ts`, the timestamp of the best-matching frame, so the UI de
 | `exact` | `true` restricts to terminal matches, disabling roll-up |
 | `max_depth` | how many levels below the matched term its evidence may sit |
 | `min_confidence` | floor on tag confidence |
+| `min_score` | relevance floor for `q` queries (default 0.26; pass 0 to disable) |
 | `limit` | max results (default 50) |
+
+Semantic results are filtered by a relevance floor so a query that matches
+nothing returns nothing. See [DESIGN.md](DESIGN.md) for why that number is a
+presentation choice rather than a calibrated threshold.
 
 ### Taxonomy — `:8082`
 

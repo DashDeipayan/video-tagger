@@ -346,6 +346,35 @@ Result: environment accuracy stays 4/4 while the false positives disappear.
 Activities and objects are deliberately **not** exclusive — a video can genuinely
 involve cleaning and food work at once, and contain many objects.
 
+### Similarity scores are a ranking signal, not a relevance score
+
+Measuring the semantic search across ten hand-written queries and four nonsense
+ones produced a result worth stating plainly:
+
+```
+lowest score of a CORRECT top hit : 0.260
+highest score of a WRONG hit      : 0.337   <- higher than the lowest correct
+highest score on NONSENSE queries : 0.253
+```
+
+The correct and incorrect ranges **overlap**. No absolute threshold can separate
+a right answer from a wrong one, because CLIP similarity is calibrated for
+*ordering within a query*, not across queries. A query whose subject is rare in
+the corpus produces lower numbers across the board than one whose subject is
+common, so the same value means different things in different queries.
+
+What a threshold *can* do is separate "something matches" from "nothing
+matches" — nonsense tops out at 0.253, correct answers bottom at 0.260. A floor
+of **0.26** keeps 10/10 correct top hits, drops every nonsense result, and cuts
+the average result count from 4.0 to 2.2.
+
+That gap is 0.007 wide. It is a presentation choice tuned on a four-video
+corpus, not a principled cutoff, and it would need re-deriving on real data. The
+honest fix is calibration against a labelled set — or converting scores to
+per-query percentiles so the number means the same thing every time.
+
+Exposed as `?min_score=`, defaulting to 0.26, with 0 disabling it.
+
 ### Known weaknesses (worth raising before someone else does)
 
 - **Max-over-frames aggregation inflates spurious tags.** One odd frame is enough to assert a tag: 4.mp4 picks up `bedroom` 0.73 from a single frame of draped cloth. Requiring agreement across ≥2 frames, or a trimmed mean, would fix this at the cost of recall on genuinely brief activities.
