@@ -1,0 +1,28 @@
+# ── build output ──────────────────────────────────────────────
+/bin/
+
+# ── runtime state ─────────────────────────────────────────────
+# sqlite catalog, blobs, extracted frames, kafka log dir
+/data/
+# pidfiles and service logs
+/.run/
+
+# ── python venv for the CLIP sidecar (~940 MB) ────────────────
+sidecar/.venv/
+__pycache__/
+*.pyc
+
+# ── macOS ─────────────────────────────────────────────────────
+.DS_Store
+
+# ── personal interview prep — deliberately NOT shared ─────────
+/instructions.md
+/problem-statement.md
+/docs/DEMO.md
+/docs/CODE_TOUR.md
+/docs/PITCH.md
+
+# ── sample footage ────────────────────────────────────────────
+# Real first-person video of identifiable people. Kept out of the
+# shared repo; see videos/README.md to supply your own.
+/videos/*.mp4

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Intelligence</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121820; --panel-2:#17202b; --line:#1f2a37;
+    --txt:#e6edf3; --dim:#8b9bb0; --faint:#5a6b80;
+    --env:#38bdf8; --act:#fbbf24; --obj:#a78bfa;
+    --ok:#34d399; --warn:#fb923c; --err:#f87171; --accent:#38bdf8;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--txt); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    min-height:100vh;
+  }
+  /* ---------- header ---------- */
+  header{
+    display:flex; align-items:center; gap:20px; padding:14px 22px;
+    border-bottom:1px solid var(--line); background:var(--panel);
+    position:sticky; top:0; z-index:50;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.2px}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .stats{display:flex;gap:22px;margin-left:auto;font-family:var(--mono);font-size:12px}
+  .stat b{display:block;font-size:17px;color:var(--txt);font-weight:600}
+  .stat span{color:var(--faint);text-transform:uppercase;letter-spacing:.6px;font-size:10px}
+
+  /* ---------- pipeline strip ---------- */
+  .pipe{
+    display:flex;align-items:center;gap:6px;padding:10px 22px;
+    border-bottom:1px solid var(--line);background:var(--panel-2);
+    font-family:var(--mono);font-size:11px;overflow-x:auto;
+  }
+  .node{
+    padding:5px 11px;border:1px solid var(--line);border-radius:6px;
+    background:var(--bg);white-space:nowrap;transition:all .25s;
+  }
+  .node.hot{border-color:var(--accent);color:var(--accent);box-shadow:0 0 14px rgba(56,189,248,.25)}
+  .topic{color:var(--faint);white-space:nowrap}
+  .arr{color:var(--faint)}
+
+  /* ---------- layout ---------- */
+  main{display:grid;grid-template-columns:316px 1fr;gap:0;align-items:start}
+  aside{
+    border-right:1px solid var(--line);padding:18px;position:sticky;top:57px;
+    height:calc(100vh - 57px);overflow-y:auto;background:var(--panel);
+  }
+  section{padding:18px 22px}
+  .sect{margin-bottom:24px}
+  .sect h3{
+    font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:var(--faint);
+    margin-bottom:10px;font-weight:600;
+  }
+
+  /* ---------- controls ---------- */
+  .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:3px;margin-bottom:12px}
+  .seg button{
+    flex:1;padding:6px;border:0;background:transparent;color:var(--dim);
+    font:inherit;font-size:12px;border-radius:5px;cursor:pointer;transition:.18s;
+  }
+  .seg button.on{background:var(--accent);color:#05121c;font-weight:600}
+  input[type=text],input[type=search]{
+    width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--line);
+    border-radius:7px;color:var(--txt);font:inherit;outline:none;transition:.18s;
+  }
+  input:focus{border-color:var(--accent)}
+  button.act{
+    width:100%;padding:9px;border:0;border-radius:7px;background:var(--accent);
+    color:#05121c;font:inherit;font-weight:600;cursor:pointer;transition:.18s;
+  }
+  button.act:hover{filter:brightness(1.12)}
+  button.ghost{
+    width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;
+    background:transparent;color:var(--dim);font:inherit;font-size:12px;cursor:pointer;
+  }
+  button.ghost:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ---------- tag chips ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{
+    padding:3px 9px;border-radius:20px;border:1px solid var(--line);background:var(--bg);
+    font-size:11px;cursor:pointer;color:var(--dim);transition:.15s;font-family:var(--mono);
+    display:inline-flex;align-items:center;gap:5px;
+  }
+  .chip:hover{border-color:var(--dim)}
+  .chip .n{opacity:.5;font-size:10px}
+  .chip[data-k=environment].on{background:var(--env);border-color:var(--env);color:#04121c}
+  .chip[data-k=activity].on   {background:var(--act);border-color:var(--act);color:#1c1204}
+  .chip[data-k=object].on     {background:var(--obj);border-color:var(--obj);color:#120a1c}
+  .chip.on{font-weight:600}
+  .kindhdr{font-size:10px;color:var(--faint);margin:10px 0 5px;font-family:var(--mono)}
+  /* taxonomy tree */
+  .tree{font-family:var(--mono);font-size:11px}
+  .tnode{display:flex;align-items:center;gap:5px;padding:2px 4px;border-radius:5px;cursor:pointer;transition:.12s}
+  .tnode:hover{background:var(--panel-2)}
+  .tnode.on{font-weight:700}
+  .tnode[data-k=environment].on{color:var(--env)} 
+  .tnode[data-k=activity].on{color:var(--act)}
+  .tnode[data-k=object].on{color:var(--obj)}
+  .tnode .tw{color:var(--faint);user-select:none}
+  .tnode .cnt{margin-left:auto;opacity:.45;font-size:10px}
+  .tnode .dagmark{color:var(--faint);font-size:9px}
+  .tnode.zero{opacity:.38}
+  .tver{font-family:var(--mono);font-size:10px;color:var(--faint);margin-bottom:8px}
+  .tg.rollup{border-left-style:dotted;opacity:.72}
+  .legend{font-size:10px;color:var(--faint);font-family:var(--mono);margin-top:9px;line-height:1.6}
+
+  /* ---------- drop zone ---------- */
+  .drop{
+    border:1.5px dashed var(--line);border-radius:9px;padding:18px 12px;text-align:center;
+    color:var(--faint);font-size:12px;cursor:pointer;transition:.2s;
+  }
+  .drop:hover,.drop.over{border-color:var(--accent);color:var(--accent);background:rgba(56,189,248,.05)}
+
+  /* ---------- result grid ---------- */
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .bar h2{font-size:15px;font-weight:600}
+  .bar .meta{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:14px}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    transition:.2s;cursor:pointer;
+  }
+  .card:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .thumb{position:relative;aspect-ratio:16/9;background:#000;overflow:hidden}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb .dur{
+    position:absolute;right:7px;bottom:7px;background:rgba(0,0,0,.8);
+    padding:1px 6px;border-radius:4px;font-family:var(--mono);font-size:10px;
+  }
+  .thumb .score{
+    position:absolute;left:7px;top:7px;background:var(--accent);color:#04121c;
+    padding:1px 7px;border-radius:4px;font-family:var(--mono);font-size:10px;font-weight:700;
+  }
+  .thumb .play{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    opacity:0;transition:.2s;background:rgba(0,0,0,.35);font-size:30px;
+  }
+  .card:hover .play{opacity:1}
+  .body{padding:11px}
+  .fname{font-family:var(--mono);font-size:12px;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .status{font-family:var(--mono);font-size:10px;margin-bottom:8px}
+  .status.PENDING,.status.DECODING,.status.TAGGING{color:var(--warn)}
+  .status.TAGGED{color:var(--ok)} .status.FAILED{color:var(--err)}
+  .spin{display:inline-block;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .tags{display:flex;flex-wrap:wrap;gap:4px}
+  .tg{
+    font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:4px;
+    border-left:2px solid; background:var(--bg); color:var(--dim);
+  }
+  .tg[data-k=environment]{border-color:var(--env)}
+  .tg[data-k=activity]{border-color:var(--act)}
+  .tg[data-k=object]{border-color:var(--obj)}
+  .tg b{color:var(--txt);font-weight:500}
+  .tg i{font-style:normal;opacity:.5;margin-left:3px}
+
+  .empty{padding:50px 20px;text-align:center;color:var(--faint);font-size:13px}
+
+  /* ---------- modal ---------- */
+  .modal{
+    position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;
+    align-items:center;justify-content:center;z-index:100;padding:24px;
+  }
+  .modal.on{display:flex}
+  .sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:860px;width:100%;overflow:hidden}
+  .sheet video{width:100%;display:block;background:#000;max-height:62vh}
+  .sheet .info{padding:15px 18px}
+  .sheet .info h4{font-family:var(--mono);font-size:13px;margin-bottom:4px}
+  .sheet .hint{font-size:11px;color:var(--faint);margin-bottom:10px;font-family:var(--mono)}
+  .x{position:absolute;top:20px;right:26px;font-size:26px;color:var(--dim);cursor:pointer;background:none;border:0}
+
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--panel-2);border:1px solid var(--accent);color:var(--txt);
+    padding:9px 16px;border-radius:8px;font-size:12px;font-family:var(--mono);
+    opacity:0;transition:.3s;pointer-events:none;z-index:200;
+  }
+  .toast.on{opacity:1}
+  @media(max-width:860px){main{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="dot"></span> Video Intelligence</div>
+  <div class="stats">
+    <div class="stat"><b id="s-vid">0</b><span>videos</span></div>
+    <div class="stat"><b id="s-hrs">0</b><span>minutes</span></div>
+    <div class="stat"><b id="s-emb">0</b><span>vectors</span></div>
+    <div class="stat"><b id="s-tag">0</b><span>tags</span></div>
+  </div>
+</header>
+
+<!-- Live view of the event pipeline. Nodes light up as videos move through,
+     which makes the asynchronous, decoupled architecture visible rather than
+     something you have to take on faith. -->
+<div class="pipe">
+  <span class="node" id="n-ingest">ingest :8080</span><span class="arr">→</span>
+  <span class="topic">video.ingested</span><span class="arr">→</span>
+  <span class="node" id="n-decoder">decoder · ffmpeg</span><span class="arr">→</span>
+  <span class="topic">video.frames.extracted</span><span class="arr">→</span>
+  <span class="node" id="n-tagger">tagger · CLIP</span><span class="arr">→</span>
+  <span class="topic">video.tagged</span><span class="arr">→</span>
+  <span class="node" id="n-search">search :8081</span>
+</div>
+
+<main>
+  <aside>
+    <div class="sect">
+      <h3>Search mode</h3>
+      <div class="seg">
+        <button id="m-tags" class="on" onclick="setMode('tags')">Tags</button>
+        <button id="m-sem" onclick="setMode('sem')">Semantic</button>
+      </div>
+
+      <!-- Closed vocabulary: exact tags against the inverted index -->
+      <div id="pane-tags">
+        <div class="seg" style="margin-bottom:8px">
+          <button id="b-all" class="on" onclick="setBool('all')">AND</button>
+          <button id="b-any" onclick="setBool('any')">OR</button>
+        </div>
+        <div class="seg" style="margin-bottom:10px">
+          <button id="r-roll" class="on" onclick="setRollup(true)">Roll-up</button>
+          <button id="r-exact" onclick="setRollup(false)">Exact</button>
+        </div>
+        <div class="tver" id="tver"></div>
+        <div class="tree" id="tree"></div>
+        <div class="legend">
+          Roll-up matches descendants: <b>cleaning</b> finds a video tagged
+          <b>dishwashing</b>. Exact matches only where the evidence stopped.
+        </div>
+        <button class="ghost" style="margin-top:10px" onclick="clearTags()">Clear selection</button>
+      </div>
+
+      <!-- Open vocabulary: any phrase, embedded at query time -->
+      <div id="pane-sem" style="display:none">
+        <input type="search" id="q" placeholder="e.g. scrubbing a metal grate"
+               onkeydown="if(event.key==='Enter')runSemantic()">
+        <div style="font-size:11px;color:var(--faint);margin:8px 0 10px;line-height:1.45">
+          Any phrase, even one absent from the vocabulary. It is embedded at
+          query time and matched against stored frame vectors.
+        </div>
+        <button class="act" onclick="runSemantic()">Search</button>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px">
+          <button class="ghost" onclick="trySem('scrubbing a metal grate under running water')">try: scrubbing a metal grate</button>
+          <button class="ghost" onclick="trySem('someone spreading wet concrete overhead')">try: spreading wet concrete</button>
+          <button class="ghost" onclick="trySem('folding fabric onto a mattress')">try: folding fabric on a mattress</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <h3>Ingest</h3>
+      <div class="drop" id="drop" onclick="document.getElementById('file').click()">
+        drop a video here<br>or click to choose
+      </div>
+      <input type="file" id="file" accept="video/*" multiple hidden onchange="upload(this.files)">
+      <button class="ghost" style="margin-top:9px" onclick="seed()">Register sample corpus</button>
+    </div>
+  </aside>
+
+  <section>
+    <div class="bar">
+      <h2 id="title">Library</h2>
+      <span class="meta" id="submeta"></span>
+      <button class="ghost" style="width:auto;padding:5px 12px;margin-left:auto" onclick="showAll()">Show all</button>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" style="display:none">Nothing here yet — register the sample corpus to begin.</div>
+  </section>
+</main>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <button class="x" onclick="closeModal()">&times;</button>
+  <div class="sheet">
+    <video id="player" controls></video>
+    <div class="info"><h4 id="p-name"></h4><div class="hint" id="p-hint"></div><div class="tags" id="p-tags"></div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// The two services are separate origins precisely because they are separate
+// deployables: ingest owns the write path, search owns the read path.
+const INGEST = location.origin;
+const SEARCH = 'http://' + location.hostname + ':8081';
+
+const TAXO = 'http://' + location.hostname + ':8082';
+let mode = 'tags', bool = 'all', rollup = true, selected = new Set(),
+    videos = [], lastResults = null, counts = {}, taxoVersion = 0;
+
+const $ = id => document.getElementById(id);
+const fmt = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'), 2200);
+}
+
+/* ---------------- polling ---------------- */
+// The UI polls because ingestion is asynchronous: POST returns 202 immediately
+// and the work happens downstream. Watching a card move PENDING -> DECODING ->
+// TAGGING -> TAGGED is the clearest demonstration that the stages are decoupled.
+async function poll(){
+  try{
+    const [vs, st] = await Promise.all([
+      fetch(`${INGEST}/api/videos`).then(r=>r.json()),
+      fetch(`${INGEST}/api/stats`).then(r=>r.json())
+    ]);
+    videos = vs || [];
+    $('s-vid').textContent = st.videos;
+    $('s-hrs').textContent = (st.total_duration_sec/60).toFixed(1);
+    $('s-emb').textContent = st.embeddings;
+    $('s-tag').textContent = st.distinct_tags;
+
+    // Light up whichever stage currently has work in flight.
+    const inflight = s => videos.some(v => v.status === s);
+    $('n-decoder').classList.toggle('hot', inflight('DECODING'));
+    $('n-tagger').classList.toggle('hot', inflight('TAGGING'));
+    $('n-ingest').classList.toggle('hot', inflight('PENDING'));
+
+    if(!lastResults) render(videos);
+    loadChips();
+  }catch(e){ /* a service restarting mid-demo should not break the page */ }
+}
+
+// The tag picker renders the taxonomy DAG itself, from the taxonomy service.
+// Showing the structure is the point: a reviewer can see that `dishwashing`
+// sits under `cleaning`, which is what makes the roll-up query legible.
+async function loadChips(){
+  try{
+    const [rows, tree] = await Promise.all([
+      fetch(`${SEARCH}/api/tags`).then(r=>r.json()),
+      fetch(`${TAXO}/api/taxonomy/tree`).then(r=>r.json())
+    ]);
+    counts = {};
+    rows.forEach(t => counts[t.name] = t);
+    taxoVersion = tree.version;
+    $('tver').textContent = `taxonomy v${tree.version}`;
+
+    const render = (node, facet, depth) => {
+      const c = counts[node.name] || {count:0, direct:0};
+      const multi = (node.parents||[]).length > 1;
+      let h = `<div class="tnode${selected.has(node.name)?' on':''}${c.count?'':' zero'}"
+                    data-k="${facet}" onclick="toggleTag('${node.name}')">
+        <span class="tw">${'│ '.repeat(Math.max(0,depth-1))}${depth?'└ ':''}</span>
+        <span>${node.name}</span>
+        ${multi?'<span class="dagmark" title="has multiple parents">⇄</span>':''}
+        ${node.source==='promoted'?'<span class="dagmark" title="auto-placed">✦</span>':''}
+        <span class="cnt">${c.count||''}</span></div>`;
+      (node.children||[]).forEach(k => h += render(k, facet, depth+1));
+      return h;
+    };
+
+    let html = '';
+    ['environment','activity','object'].forEach(k=>{
+      if(!tree.facets[k]) return;
+      html += `<div class="kindhdr">${k}</div>`;
+      tree.facets[k].forEach(root => html += render(root, k, 0));
+    });
+    $('tree').innerHTML = html;
+  }catch(e){}
+}
+
+/* ---------------- search ---------------- */
+function setMode(m){
+  mode = m;
+  $('m-tags').classList.toggle('on', m==='tags');
+  $('m-sem').classList.toggle('on', m==='sem');
+  $('pane-tags').style.display = m==='tags' ? '' : 'none';
+  $('pane-sem').style.display  = m==='sem'  ? '' : 'none';
+}
+function setBool(b){
+  bool = b;
+  $('b-all').classList.toggle('on', b==='all');
+  $('b-any').classList.toggle('on', b==='any');
+  if(selected.size) runTags();
+}
+// Roll-up is the default. Exact restricts to videos whose evidence stopped at
+// the queried term rather than at something beneath it.
+function setRollup(v){
+  rollup = v;
+  $('r-roll').classList.toggle('on', v);
+  $('r-exact').classList.toggle('on', !v);
+  if(selected.size) runTags();
+}
+function toggleTag(n){
+  selected.has(n) ? selected.delete(n) : selected.add(n);
+  loadChips();
+  selected.size ? runTags() : showAll();
+}
+function clearTags(){ selected.clear(); loadChips(); showAll(); }
+
+// Closed-vocabulary path: exact tag match against the inverted index.
+async function runTags(){
+  const tags = [...selected];
+  if(!tags.length) return showAll();
+  const url = `${SEARCH}/api/search?tags=${encodeURIComponent(tags.join(','))}&mode=${bool}`
+            + (rollup ? '' : '&exact=true');
+  const d = await fetch(url).then(r=>r.json());
+  lastResults = d.results;
+  render(d.results.map(r=>({...r.video, _score:r.score, _q:tags})));
+  $('title').textContent = `${bool.toUpperCase()}: ${tags.join(' · ')}`;
+  $('submeta').textContent = `${d.count} result${d.count===1?'':'s'} — `
+    + (rollup ? 'roll-up (matches descendants)' : 'exact (terminal matches only)')
+    + ` · taxonomy v${d.taxonomy_version??taxoVersion}`;
+  if(!d.count) $('empty').textContent = rollup
+    ? `No video carries ${bool==='all'?'all':'any'} of those tags.`
+    : `No video's evidence stopped at ${tags.join(', ')} — try Roll-up.`;
+}
+
+// Open-vocabulary path: the phrase is embedded now and compared with stored
+// frame vectors. No re-processing of any video is involved.
+async function runSemantic(){
+  const q = $('q').value.trim();
+  if(!q) return;
+  $('submeta').textContent = 'embedding query…';
+  const d = await fetch(`${SEARCH}/api/search?q=${encodeURIComponent(q)}`).then(r=>r.json());
+  lastResults = d.results;
+  render(d.results.map(r=>({...r.video, _score:r.score, _ts:r.match_ts})));
+  $('title').textContent = `“${q}”`;
+  $('submeta').textContent = `${d.count} ranked by similarity — open vocabulary, matched on frame vectors`;
+}
+function trySem(q){ setMode('sem'); $('q').value = q; runSemantic(); }
+
+function showAll(){
+  lastResults = null; selected.clear(); loadChips();
+  $('title').textContent = 'Library';
+  $('submeta').textContent = `${videos.length} video${videos.length===1?'':'s'}`;
+  render(videos);
+}
+
+/* ---------------- rendering ---------------- */
+function render(list){
+  const g = $('grid');
+  $('empty').style.display = list.length ? 'none' : '';
+  g.innerHTML = list.map(v=>{
+    const busy = ['PENDING','DECODING','TAGGING'].includes(v.status);
+    // Terminal tags first — they are the actual evidence; rolled-up ancestors
+    // are shown dotted so a roll-up hit explains itself on the card.
+    const sorted = (v.tags||[]).slice().sort((a,b)=>
+      (b.asserted-a.asserted) || (b.confidence-a.confidence));
+    const tags = sorted.slice(0,6).map(t=>
+      `<span class="tg${t.asserted?'':' rollup'}" data-k="${t.kind}" title="${t.path}${
+        t.asserted?' (terminal)':' (rolled up from depth '+t.evidence_depth+')'}"><b>${t.name}</b><i>${
+        t.confidence.toFixed(2)}</i></span>`).join('');
+    // When a roll-up query matched, name the descendant that caused it.
+    let why = '';
+    if(v._q){
+      const via = (v.tags||[]).filter(t => t.asserted &&
+        v._q.some(q => t.path.startsWith(q + '.')));
+      if(via.length) why = ` · via ${via.map(t=>t.name).join(', ')}`;
+    }
+    return `<div class="card" onclick="open_('${v.id}',${v._ts||0})">
+      <div class="thumb">
+        ${v.frame_count ? `<img src="${INGEST}/frames/${v.id}/frame_0000.jpg" loading="lazy" onerror="this.style.display='none'">` : ''}
+        ${v._score!==undefined ? `<span class="score">${v._score.toFixed(2)}</span>` : ''}
+        ${v.duration_sec ? `<span class="dur">${fmt(v.duration_sec)}</span>` : ''}
+        <div class="play">▶</div>
+      </div>
+      <div class="body">
+        <div class="fname">${v.filename}</div>
+        <div class="status ${v.status}">${busy?'<span class="spin">◐</span> ':''}${v.status}${
+          v._ts ? ` · best match @${Math.round(v._ts)}s` : ''}${why}</div>
+        <div class="tags">${tags || '<span style="color:var(--faint);font-size:11px">awaiting tags…</span>'}</div>
+      </div></div>`;
+  }).join('');
+}
+
+/* ---------------- playback ---------------- */
+// Semantic hits carry the timestamp of their best-matching frame, so the player
+// opens at the moment that actually caused the hit rather than at 0:00.
+function open_(id, ts){
+  const v = videos.find(x=>x.id===id) || (lastResults||[]).map(r=>r.video).find(x=>x.id===id);
+  if(!v) return;
+  const p = $('player');
+  p.src = `${INGEST}/media/${id}`;
+  p.currentTime = ts || 0;
+  if(ts) p.addEventListener('loadedmetadata', ()=>{ p.currentTime = ts; }, {once:true});
+  $('p-name').textContent = v.filename;
+  $('p-hint').textContent = ts ? `seeked to best-matching frame @${Math.round(ts)}s`
+                               : `${v.frame_count} frames sampled · ${v.tagger_name||''}`;
+  $('p-tags').innerHTML = (v.tags||[]).slice()
+    .sort((a,b)=>(b.asserted-a.asserted)||(b.confidence-a.confidence))
+    .map(t=>`<span class="tg${t.asserted?'':' rollup'}" data-k="${t.kind}" title="${t.path}"><b>${
+      t.name}</b><i>${t.confidence.toFixed(2)}</i></span>`).join('');
+  $('modal').classList.add('on');
+}
+function closeModal(){ $('modal').classList.remove('on'); $('player').pause(); $('player').src=''; }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+/* ---------------- ingest ---------------- */
+async function upload(files){
+  for(const f of files){
+    const fd = new FormData(); fd.append('file', f);
+    toast(`uploading ${f.name}…`);
+    await fetch(`${INGEST}/api/videos`, {method:'POST', body:fd});
+  }
+  toast('queued for processing'); poll();
+}
+const drop = $('drop');
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e, ev=>{ev.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e, ev=>{ev.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop', ev=>upload(ev.dataTransfer.files));
+
+// Registers files already on disk by reference — the path that matters at
+// scale, where video lands in object storage and the pipeline is merely told
+// where to find it.
+async function seed(){
+  toast('registering sample corpus…');
+  for(const n of ['1.mp4','2.mp4','3.mp4','4.mp4']){
+    await fetch(`${INGEST}/api/videos/register`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({path:`videos/${n}`})
+    });
+  }
+  toast('registered — watch the pipeline'); poll();
+}
+
+poll(); setInterval(poll, 1500);
+</script>
+</body>
+</html>
